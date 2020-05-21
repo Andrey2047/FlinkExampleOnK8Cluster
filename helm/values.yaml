@@ -1,0 +1,23 @@
+image: flink
+imageTag: latest
+imagePullPolicy: Always
+
+resources:
+  jobmanager:
+    limits:
+      cpu: 1000m
+      memory: 1280Mi
+    requests:
+      cpu: 1000m
+      memory: 1280Mi
+  taskmanager:
+    limits:
+      memory: 1280Mi
+    requests:
+      memory: 1280Mi
+
+flink:
+  jobManagerHeapSize: 1024m
+  taskManagerHeapSize: 1024m
+  taskManagersNodes: 1
+  numSlotsPerTaskmanager: 1
