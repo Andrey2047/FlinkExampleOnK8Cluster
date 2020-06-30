@@ -1,56 +1,86 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ template "fullname" . }}-taskmanager
+  name: flink-cluster-taskmanager
 spec:
   replicas: {{ .Values.flink.taskManagersNodes }}
   selector:
     matchLabels:
-      app: {{ template "fullname" . }}
+      app: flink-cluster
+      release: {{ .Release.Name | quote }}
       component: taskmanager
   template:
     metadata:
       labels:
-        app: {{ template "fullname" . }}
+        app: flink-cluster
+        release: {{ .Release.Name | quote }}
         component: taskmanager
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: {{ .Values.flink.metrics.port | quote }}
     spec:
       containers:
-      - name: taskmanager
-        image: {{ .Values.image }}:{{ .Values.imageTag }}
-        workingDir: /opt/flink
-        command: ["/bin/bash", "-c", "$FLINK_HOME/bin/taskmanager.sh start; \
-        while :;
-        do
-          if [[ -f $(find log -name '*taskmanager*.log' -print -quit) ]];
-            then tail -f -n +1 log/*taskmanager*.log;
+        - name: taskmanager
+          image: {{ .Values.image }}:{{ .Values.imageTag }}
+          workingDir: /opt/flink
+          command: ["/bin/bash", "-c",
+                    "$FLINK_HOME/bin/taskmanager.sh start; \
+          while :;
+          do
+            if [[ -f $(find log -name '*taskmanager*.log' -print -quit) ]];
+            then tail -f -n +1 log/*manager*.log;
           fi;
-        done"]
-        ports:
-        - containerPort: 6122
-          name: rpc
-        livenessProbe:
-          tcpSocket:
-            port: 6122
-          initialDelaySeconds: 30
-          periodSeconds: 60
-        resources:
-          limits:
-            cpu: {{ .Values.flink.numSlotsPerTaskmanager }}
-            memory: {{ .Values.resources.taskmanager.limits.memory }}
-          requests:
-            cpu: {{ .Values.flink.numSlotsPerTaskmanager }}
-            memory: {{ .Values.resources.taskmanager.requests.memory }}
+          done"]
+          env:
+          - name: HADOOP_CONF_DIR
+            value: /etc/hadoop/conf
+          - name: AWS_DEFAULT_REGION
+            value: {{ .Values.aws.region }}
+          ports:
+            - containerPort: 6122
+              name: rpc
+            - containerPort: 9999
+              name: metrics
+          livenessProbe:
+            tcpSocket:
+              port: 6122
+            initialDelaySeconds: 30
+            periodSeconds: 60
+          resources:
+            limits:
+              cpu: {{ .Values.flink.numSlotsPerTaskmanager }}
+              memory: {{ .Values.resources.taskmanager.limits.memory }}
+            requests:
+              cpu: {{ .Values.flink.numSlotsPerTaskmanager }}
+              memory: {{ .Values.resources.taskmanager.requests.memory }}
           volumeMounts:
-            - name: flink-config-volume
-              mountPath: /opt/flink/conf/
+          - name: flink-config-volume
+            mountPath: /opt/flink/conf/flink-conf.yaml
+            subPath: flink-conf.yaml
+          - name: log4j-config-volume
+            mountPath: /opt/flink/conf/log4j.properties
+            subPath: log4j.properties
+{{ if .Values.aws.credentials }}
+          - name: aws-credentials
+            mountPath: /opt/flink/.aws
+{{ end }}
           securityContext:
             runAsUser: 9999  # refers to user _flink_ from official flink image, change if necessary
       volumes:
-        - name: flink-config-volume
-          configMap:
-            name: flink-config
-            items:
-              - key: flink-conf.yaml
-                path: flink-conf.yaml
-              - key: log4j.properties
-                path: log4j.properties
+      - name: flink-config-volume
+        configMap:
+          name: flink-cluster-flink-config
+          items:
+          - key: flink-conf.yaml
+            path: flink-conf.yaml
+      - name: log4j-config-volume
+        configMap:
+          name: flink-cluster-flink-config
+          items:
+          - key: log4j.properties
+            path: log4j.properties
+{{ if .Values.aws.credentials }}
+      - name: aws-credentials
+        secret:
+          secretName: {{ .Values.aws.credentials }}
+{{ end }}

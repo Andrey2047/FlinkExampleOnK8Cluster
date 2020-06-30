@@ -1,7 +1,11 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ template "fullname" . }}-jobmanager-rest
+{{ if .Values.service.name }}
+  name: {{ .Values.service.name }}
+{{ else }}
+  name: {{ template "flink.releaseName" . }}-jobmanager-rest
+{{ end }}
 spec:
   type: NodePort
   ports:
@@ -9,5 +13,6 @@ spec:
       port: 8081
       targetPort: 8081
   selector:
-    app: {{ template "fullname" . }}
+    app: flink-cluster
+    release: {{ .Release.Name | quote }}
     component: jobmanager

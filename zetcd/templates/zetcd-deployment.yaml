@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zetcd
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zetcd
+  template:
+    metadata:
+      labels:
+        app: zetcd
+    spec:
+      containers:
+        - name: etcd
+          image: quay.io/coreos/etcd:v3.3.13
+          command:
+            - etcd
+            - --data-dir=/etcd-data
+            - --listen-client-urls=http://0.0.0.0:2379
+            - --advertise-client-urls=http://0.0.0.0:2379
+            - --name=node1
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 2379
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 3
+          ports:
+            - containerPort: 2379
+              name: etcd
+          volumeMounts:
+            - name: zetcd-persistent-storage
+              mountPath: /etcd-data
+        - name: zetcd
+          image: quay.io/coreos/zetcd:v0.0.5
+          command:
+            - zetcd
+            - --zkaddr=0.0.0.0:2181
+            - --endpoints=localhost:2379
+          ports:
+            - containerPort: 2181
+              name: zetcd
+      volumes:
+        - name: zetcd-persistent-storage
+          persistentVolumeClaim:
+            claimName: zetcd-pv-claim
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: zetcd-pv-claim
+  labels:
+    app: zetcd
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zetcd
+  labels:
+    app: zetcd
+spec:
+  type: ClusterIP
+  ports:
+    - port: 2181
+      protocol: TCP
+      targetPort: zetcd
+  selector:
+    app: zetcd

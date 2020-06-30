@@ -1,40 +1,78 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ template "fullname" . }}-flink-config
+  name: flink-cluster-flink-config
   labels:
-    app: {{ template "fullname" . }}
+    app: flink-cluster
+    release: {{ .Release.Name | quote }}
 data:
+  masters: |+
+    flink-cluster-jobmanager:8081
+
   flink-conf.yaml: |+
-    jobmanager.rpc.address: {{ template "fullname" . }}-jobmanager
+
+{{ if .Values.flink.highAvailability.enabled }}
+    jobmanager.rpc.address: <POD_ID_REPLACEMENT>
+    high-availability: zookeeper
+    high-availability.cluster-id: /flink
+    high-availability.zookeeper.path.root: {{ .Values.flink.highAvailability.zk.rootPath }}
+
+    high-availability.storageDir: s3://<<STORAGE_DIR>>
+    high-availability.jobmanager.port: 50010
+
+    high-availability.zookeeper.client.acl: open
+    high-availability.zookeeper.quorum: zetcd:2181
+    zookeeper.sasl.disable: true
+
+{{ else }}
+    jobmanager.rpc.address: flink-cluster-jobmanager
+    jobmanager.rpc.port: 6123
+{{ end }}
+
     taskmanager.numberOfTaskSlots: {{ .Values.flink.numSlotsPerTaskmanager }}
     blob.server.port: 6124
-    jobmanager.rpc.port: 6123
     taskmanager.rpc.port: 6122
-    jobmanager.heap.size: {{ .Values.flink.jobManagerHeapSizeMb }}
-    taskmanager.memory.process.size: {{ .Values.flink.taskManagerHeapSize }}
+    jobmanager.heap.size: 1g
+    taskmanager.memory.process.size: 1g
+
+    metrics.reporters: prom
+    metrics.reporter.prom.class: org.apache.flink.metrics.prometheus.PrometheusReporter
+    metrics.reporter.prom.port: {{ .Values.flink.metrics.port }}
+    metrics.system-resource: true
+    metrics.system-resource-probing-interval: 5000
+
+{{ if .Values.aws.s3Bucket}}
+    state.checkpoints.dir: s3://<<CHECKPOINTS_DIR>>/checkpoints
+    state.savepoints.dir: s3://<<SAVEPOINTS_DIR>>/savepoints
+    state.backend.async: true
+    state.backend.fs.memory-threshold: 1024
+    state.backend.fs.write-buffer-size: 4096
+    state.backend.incremental: false
+    state.backend.local-recovery: false
+    state.checkpoints.num-retained: 1
+{{ end }}
+
   log4j.properties: |+
-    log4j.rootLogger=INFO, console, file
-    # Uncomment this if you want to _only_ change Flink's logging
-    #log4j.logger.org.apache.flink=INFO
-    # The following lines keep the log level of common libraries/connectors on
-    # log level INFO. The root logger does not override this. You have to manually
-    # change the log levels here.
-    log4j.logger.akka=INFO
-    log4j.logger.org.apache.kafka=INFO
+    log4j.rootLogger=INFO, file, stdout
+    log4j.logger.akka=INF
+    log4j.logger.org.apache.kafka=WARN
+    log4j.logger.org.apache.kafka.clients.producer.ProducerConfig=WARN
+    log4j.logger.org.apache.kafka.clients.consumer.ConsumerConfig=WARN
     log4j.logger.org.apache.hadoop=INFO
     log4j.logger.org.apache.zookeeper=INFO
-    # Log all infos to the console
-    log4j.appender.console=org.apache.log4j.ConsoleAppender
-    log4j.appender.console.layout=org.apache.log4j.PatternLayout
-    log4j.appender.console.layout.ConversionPattern=%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p %-60c %x - %m%n
-    # Log all INFOs to the given rolling file
-    log4j.appender.file=org.apache.log4j.RollingFileAppender
-    log4j.appender.file.file=/opt/flink/log/output.log
-    log4j.appender.file.MaxFileSize=5MB
-    log4j.appender.file.MaxBackupIndex=5
-    log4j.appender.file.append=true
+    log4j.logger.org.apache.flink.runtime.rpc=INFO./
+    log4j.logger.org.apache.flink.runtime.rpc.akka.AkkaRpcService=INFO
+    log4j.logger.org.apache.flink.runtime.taskexecutor.JobLeaderService=INFO
+    log4j.logger.org.apache.flink.runtime.taskexecutor.DefaultJobLeaderService=INFO
+    log4j.logger.org.apache.flink.runtime.leaderretrieval.ZooKeeperLeaderRetrievalService=INFO
+    log4j.logger.org.apache.flink.runtime.taskexecutor.TaskExecutor=INFO
+    log4j.appender.file=org.apache.log4j.FileAppender
+    log4j.appender.file.file=${log.file}
     log4j.appender.file.layout=org.apache.log4j.PatternLayout
     log4j.appender.file.layout.ConversionPattern=%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p %-60c %x - %m%n
-    # Suppress the irrelevant (wrong) warnings from the Netty channel handler
-    log4j.logger.org.apache.flink.shaded.akka.org.jboss.netty.channel.DefaultChannelPipeline=ERROR, console, file
+    log4j.logger.org.apache.flink.shaded.akka.org.jboss.netty.channel.DefaultChannelPipeline=ERROR, file
+
+    log4j.appender.stdout=org.apache.log4j.ConsoleAppender
+    log4j.appender.stdout.Target=System.out
+    log4j.appender.stdout.layout=org.apache.log4j.PatternLayout
+    log4j.appender.stdout.layout.ConversionPattern=%d{yyyy-MM-dd HH:mm:ss} %-5p %c{1}:%L - %m%n

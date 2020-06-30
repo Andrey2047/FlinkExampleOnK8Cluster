@@ -11,11 +11,11 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <flink.version>1.7.1</flink.version>
-        <scala.binary.version>2.12</scala.binary.version>
-        <scala.version>2.12.8</scala.version>
-        <scala.major.version>2.12</scala.major.version>
-        <scala.minor.version>2.12.8</scala.minor.version>
+        <flink.version>1.10.1</flink.version>
+        <scala.binary.version>2.11</scala.binary.version>
+        <scala.version>2.11.8</scala.version>
+        <scala.major.version>2.11</scala.major.version>
+        <scala.minor.version>2.11.8</scala.minor.version>
         <scala-maven-plugin.version>3.2.0</scala-maven-plugin.version>
         <scala.test.version>3.0.1</scala.test.version>
         <maven-compiler-plugin.version>2.4</maven-compiler-plugin.version>
@@ -24,9 +24,8 @@
     <dependencies>
         <dependency>
             <groupId>org.apache.flink</groupId>
-            <artifactId>flink-scala_${scala.binary.version}</artifactId>
-            <version>${flink.version}</version>
-            <scope>provided</scope>
+            <artifactId>flink-scala_2.11</artifactId>
+            <version>1.10.1</version>
         </dependency>
         <dependency>
             <groupId>org.apache.flink</groupId>
@@ -60,7 +59,7 @@
         <dependency>
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-queryable-state-client-java_${scala.binary.version}</artifactId>
-            <version>${flink.version}</version>
+            <version>1.7.1</version>
         </dependency>
 
         <!--

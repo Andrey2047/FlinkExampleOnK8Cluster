@@ -1,53 +1,111 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ template "fullname" . }}-jobmanager
+  name: flink-cluster-jobmanager
 spec:
+{{ if .Values.flink.highAvailability.enabled }}
+  replicas: {{ .Values.flink.jobManagersNodes}}
+{{ else }}
   replicas: 1
+{{ end }}
   selector:
     matchLabels:
-      app: {{ template "fullname" . }}
+      app: flink-cluster
+      release: {{ template "flink.releaseName" . }}
       component: jobmanager
   template:
     metadata:
       labels:
-        app: {{ template "fullname" . }}
+        app: flink-cluster
+        release: {{ template "flink.releaseName" . }}
         component: jobmanager
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: {{ .Values.flink.metrics.port | quote }}
     spec:
       containers:
         - name: jobmanager
           image: {{ .Values.image }}:{{ .Values.imageTag }}
           workingDir: /opt/flink
-          command: ["/bin/bash", "-c", "$FLINK_HOME/bin/jobmanager.sh start;\
-          while :;
-          do
-            if [[ -f $(find log -name '*jobmanager*.log' -print -quit) ]];
-              then tail -f -n +1 log/*jobmanager*.log;
-            fi;
-          done"]
+          command: ["/bin/bash", "-c",
+                    "sed 's/<POD_ID_REPLACEMENT>/'${FLINK_POD_IP}'/' $FLINK_HOME/conf/flink-conf.yaml.tpl > $FLINK_HOME/conf/flink-conf.yaml && \
+                    $FLINK_HOME/bin/jobmanager.sh start; \
+        while :;
+        do
+          if [[ -f $(find log -name '*jobmanager*.log' -print -quit) ]];
+            then tail -f -n +1 log/*jobmanager*.log;
+          fi;
+        done"]
+          env:
+            - name: HADOOP_CONF_DIR
+              value: /etc/hadoop/conf
+            - name: AWS_DEFAULT_REGION
+              value: {{ .Values.aws.region }}
+            - name: FLINK_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+
           ports:
-            - containerPort: 6123
-              name: rpc
             - containerPort: 6124
               name: blob
+            - containerPort: 6123
+              name: rpc
             - containerPort: 8081
               name: ui
+            - containerPort: 9999
+              name: metrics
+            - containerPort: 50010
+              name: ha
+          resources:
+            limits:
+              cpu: {{ .Values.resources.jobmanager.limits.cpu }}
+              memory: {{ .Values.resources.jobmanager.limits.memory }}
+            requests:
+              cpu: {{ .Values.resources.jobmanager.requests.cpu }}
+              memory: {{ .Values.resources.jobmanager.requests.memory }}
+          readinessProbe:
+            tcpSocket:
+{{ if .Values.flink.highAvailability.enabled }}
+              port: 50010
+{{ else }}
+              port: 6123
+{{ end }}
+            periodSeconds: 10
+            initialDelaySeconds: 20
           livenessProbe:
             tcpSocket:
-              port: 6123
-            initialDelaySeconds: 30
-            periodSeconds: 60
+              port: 6124
+            initialDelaySeconds: 10
+            periodSeconds: 15
           volumeMounts:
             - name: flink-config-volume
-              mountPath: /opt/flink/conf
+              mountPath: /opt/flink/conf/flink-conf.yaml.tpl
+              subPath: flink-conf.yaml.tpl
+            - name: log4j-config-volume
+              mountPath: /opt/flink/conf/log4j.properties
+              subPath: log4j.properties
+{{ if .Values.aws.credentials }}
+            - name: aws-credentials
+              mountPath: /opt/flink/.aws
+{{ end }}
           securityContext:
             runAsUser: 9999  # refers to user _flink_ from official flink image, change if necessary
       volumes:
         - name: flink-config-volume
           configMap:
-            name: flink-config
+            name: {{ template "helpers.releaseName" . }}-flink-config
             items:
               - key: flink-conf.yaml
-                path: flink-conf.yaml
+                path: flink-conf.yaml.tpl
+        - name: log4j-config-volume
+          configMap:
+            name: {{ template "helpers.releaseName" . }}-flink-config
+            items:
               - key: log4j.properties
                 path: log4j.properties
+{{ if .Values.aws.credentials }}
+        - name: aws-credentials
+          secret:
+            secretName: {{ .Values.aws.credentials }}
+{{ end }}
